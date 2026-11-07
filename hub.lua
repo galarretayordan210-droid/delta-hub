@@ -1,0 +1,218 @@
+-- ==========================================
+-- YORDAN HUB - PRISON LIFE (BYPASS ESTANTE DE GUARDIA)
+-- ==========================================
+
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
+local Window = Library.CreateLib("YORDAN HUB | Guardia VIP", "DarkTheme")
+
+-- ==========================================
+-- MINI HUD FLOTANTE (DISCRETO)
+-- ==========================================
+local ScreenGui = Instance.new("ScreenGui")
+local HudFrame = Instance.new("Frame")
+local HudText = Instance.new("TextLabel")
+
+if syn and syn.protect_gui then
+    syn.protect_gui(ScreenGui)
+    ScreenGui.Parent = game.CoreGui
+elseif gethui then
+    ScreenGui.Parent = gethui()
+else
+    ScreenGui.Parent = game.CoreGui
+end
+
+ScreenGui.Name = "YordanMiniHUD"
+HudFrame.Parent = ScreenGui
+HudFrame.BackgroundColor3 = Color3.fromRGB(15, 20, 30)
+HudFrame.BackgroundTransparency = 0.4
+HudFrame.BorderSizePixel = 0
+HudFrame.Position = UDim2.new(0.01, 0, 0.01, 0)
+HudFrame.Size = UDim2.new(0, 110, 0, 24)
+HudFrame.Active = true
+HudFrame.Draggable = true
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 5)
+UICorner.Parent = HudFrame
+
+HudText.Parent = HudFrame
+HudText.BackgroundTransparency = 1
+HudText.Size = UDim2.new(1, 0, 1, 0)
+HudText.Font = Enum.Font.Code
+HudText.TextColor3 = Color3.fromRGB(0, 240, 255)
+HudText.TextSize = 10
+HudText.Text = "FPS: 60 | VIP"
+HudText.TextXAlignment = Enum.TextXAlignment.Center
+
+local RunService = game:GetService("RunService")
+local lastUpdate = 0
+RunService.RenderStepped:Connect(function(step)
+    if tick() - lastUpdate >= 0.5 then
+        lastUpdate = tick()
+        local fps = math.floor(1 / step)
+        HudText.Text = "FPS: " .. fps .. " | VIP"
+    end
+end)
+
+-- ==========================================
+-- BLOQUEO DE LA TIENDA DE ROBUX PARA ESTANTES VIP
+-- ==========================================
+pcall(function()
+    local MarketplaceService = game:GetService("MarketplaceService")
+    hookfunction(MarketplaceService.PromptGamePassPurchase, function(player, gamepassId, ...)
+        -- Si intentas comprar el pase del estante, el script lo bloquea y te da el escudo directo
+        local Event = workspace.Remote.ItemHandler
+        if workspace.Prison_ITEMS.giver:FindFirstChild("Riot Shield") then
+            Event:InvokeServer(workspace.Prison_ITEMS.giver["Riot Shield"].ITEMPICKUP)
+        end
+        return true
+    end)
+end)
+
+-- ==========================================
+-- PESTAÑA: JUGADOR (CON NOCLIP)
+-- ==========================================
+local PlayerTab = Window:NewTab("Jugador")
+local PlayerSection = PlayerTab:NewSection("Movimiento y Físicas")
+
+PlayerSection:NewSlider("Velocidad", "WalkSpeed", 200, 16, function(v)
+    game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = v
+end)
+
+PlayerSection:NewSlider("Salto", "JumpPower", 250, 50, function(v)
+    game.Players.LocalPlayer.Character.Humanoid.JumpPower = v
+end)
+
+getgenv().NoclipEnabled = false
+PlayerSection:NewToggle("Modo Noclip", "Atraviesa paredes", function(state)
+    getgenv().NoclipEnabled = state
+end)
+
+RunService.Stepped:Connect(function()
+    if getgenv().NoclipEnabled then
+        pcall(function()
+            local character = game.Players.LocalPlayer.Character
+            if character then
+                for _, part in pairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+-- ==========================================
+-- PESTAÑA: ARMAS & ESTANTE DE GUARDIA
+-- ==========================================
+local WeaponTab = Window:NewTab("Armas & Guardia")
+local WeaponSection = WeaponTab:NewSection("Estantes de la Armería")
+
+WeaponSection:NewButton("🛡️ Reclamar Estante de Guardia (Escudo)", "Obtén el escudo del estante VIP sin que pida Robux", function()
+    pcall(function()
+        local Event = workspace.Remote.ItemHandler
+        if workspace.Prison_ITEMS.giver:FindFirstChild("Riot Shield") then
+            Event:InvokeServer(workspace.Prison_ITEMS.giver["Riot Shield"].ITEMPICKUP)
+        end
+    end)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Yordan Hub",
+        Text = "¡Estante de guardia reclamado con éxito!",
+        Duration = 3
+    })
+end)
+
+WeaponSection:NewButton("🔓 Reclamar Todas las Armas Libres", "Agarra las armas normales del almacén", function()
+    pcall(function()
+        local Event = workspace.Remote.ItemHandler
+        local armas = {"Remington 870", "M4A1", "AK-47", "Taser"}
+        for _, arma in pairs(armas) do
+            if workspace.Prison_ITEMS.giver:FindFirstChild(arma) then
+                Event:InvokeServer(workspace.Prison_ITEMS.giver[arma].ITEMPICKUP)
+            end
+        end
+    end)
+end)
+
+-- ==========================================
+-- PESTAÑA: COMBATE & SILENT AIM
+-- ==========================================
+local CombatTab = Window:NewTab("Combate")
+local CombatSection = CombatTab:NewSection("Autoapuntado Oculto")
+
+getgenv().SilentAim = false
+CombatSection:NewToggle("Activar Silent Aim", "Dispara al enemigo sin mover tu cámara", function(state)
+    getgenv().SilentAim = state
+end)
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local function getClosestEnemy()
+    local closestTarget = nil
+    local shortestDistance = math.huge
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") and player.Character:FindFirstChild("Humanoid") then
+            local esEnemigo = false
+            if LocalPlayer.Team.Name == "Guards" and player.Team.Name ~= "Guards" then
+                esEnemigo = true
+            elseif LocalPlayer.Team.Name == "Inmates" and player.Team.Name == "Guards" then
+                esEnemigo = true
+            elseif LocalPlayer.Team.Name == "Criminals" then
+                esEnemigo = true
+            end
+
+            if esEnemigo and player.Character.Humanoid.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
+                if onScreen then
+                    local mousePos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+                    local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closestTarget = player.Character.Head
+                    end
+                end
+            end
+        end
+    end
+    return closestTarget
+end
+
+pcall(function()
+    local mt = getrawmetatable(game)
+    local oldNamecall = mt.__namecall
+    setreadonly(mt, false)
+    mt.__namecall = newcclosure(function(self, ...)
+        local args = {...}
+        local method = getnamecallmethod()
+        if getgenv().SilentAim and method == "FireServer" and tostring(self) == "ShootEvent" then
+            local enemyHead = getClosestEnemy()
+            if enemyHead and args[1] and args[1][1] then
+                args[1][1].Direction = (enemyHead.Position - args[1][1].Origin).Unit
+            end
+        end
+        return oldNamecall(self, unpack(args))
+    end)
+    setreadonly(mt, true)
+end)
+
+-- ==========================================
+-- PESTAÑA: TELEPORT
+-- ==========================================
+local TeleportTab = Window:NewTab("Teleport")
+local TeleportSection = TeleportTab:NewSection("Zonas del Mapa")
+
+TeleportSection:NewButton("Patio", "Ir al patio", function()
+    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(789, 98, 2498)
+end)
+
+TeleportSection:NewButton("Armería", "Ir a la armería", function()
+    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(838, 99, 2269)
+end)
+
+TeleportSection:NewButton("Base Criminal", "Ir afuera", function()
+    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(-943, 94, 2054)
+end)
